@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
 
 void main() {
@@ -66,6 +68,7 @@ class _LoginPageState extends State<LoginPage>
     super.dispose();
   }
 
+  // ✅ LOGIN DIPERBAIKI: sekarang hit API sungguhan
   void _login() async {
     final nim = _usernameCtrl.text.trim();
     final pass = _passwordCtrl.text.trim();
@@ -75,34 +78,60 @@ class _LoginPageState extends State<LoginPage>
       return;
     }
 
-    if (nim != pass) {
-      setState(() => _errorMsg =
-          "Username dan password harus sama (NIM masing-masing).");
-      return;
-    }
-
     setState(() {
       _loading = true;
       _errorMsg = null;
     });
 
-    await Future.delayed(const Duration(milliseconds: 1200));
+    try {
+      final url =
+          Uri.parse('https://task.itprojects.web.id/api/auth/login');
 
-    final String authToken = "token_$nim";
+      final response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: jsonEncode({
+          'username': nim,
+          'password': pass,
+        }),
+      );
 
-    if (!mounted) return;
-    setState(() => _loading = false);
+      if (!mounted) return;
 
-    Navigator.pushReplacement(
-      context,
-      PageRouteBuilder(
-        transitionDuration: const Duration(milliseconds: 600),
-        pageBuilder: (_, animation, __) => FadeTransition(
-          opacity: animation,
-          child: ProductPage(authToken: authToken, nim: nim),
-        ),
-      ),
-    );
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final String authToken = data['data']['token'];
+
+        setState(() => _loading = false);
+
+        Navigator.pushReplacement(
+          context,
+          PageRouteBuilder(
+            transitionDuration: const Duration(milliseconds: 600),
+            pageBuilder: (_, animation, __) => FadeTransition(
+              opacity: animation,
+              child: ProductPage(authToken: authToken, nim: nim),
+            ),
+          ),
+        );
+      } else {
+        final data = jsonDecode(response.body);
+        setState(() {
+          _loading = false;
+          _errorMsg =
+              data['message'] ?? 'Login gagal: ${response.statusCode}';
+        });
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _errorMsg = 'Gagal terhubung ke server. Cek koneksi internet.';
+      });
+    }
   }
 
   @override
@@ -173,11 +202,11 @@ class _LoginPageState extends State<LoginPage>
 
                 const SizedBox(height: 20),
 
-                _buildLabel("Password (NIM)"),
+                _buildLabel("Password"),
                 const SizedBox(height: 8),
                 _buildTextField(
                   controller: _passwordCtrl,
-                  hint: "Masukkan NIM",
+                  hint: "Masukkan Password",
                   icon: Icons.lock_outline_rounded,
                   obscure: _obscure,
                   suffixIcon: IconButton(
@@ -328,6 +357,9 @@ class _LoginPageState extends State<LoginPage>
   }
 }
 
+// ─────────────────────────────────────────────
+// PRODUCT PAGE
+// ─────────────────────────────────────────────
 
 class ProductPage extends StatefulWidget {
   final String authToken;
@@ -351,8 +383,6 @@ class _ProductPageState extends State<ProductPage>
   late List<AnimationController> _cardControllers;
   late List<Animation<Offset>> _slideAnims;
 
-  // Gambar menggunakan asset lokal (letakkan di assets/images/)
-  // Ganti path sesuai nama file gambar kamu
   final List<Map<String, dynamic>> commissions = [
     {
       "title": "Headshot",
@@ -391,7 +421,6 @@ class _ProductPageState extends State<ProductPage>
     },
   ];
 
-  // Fallback icon jika gambar belum tersedia
   final List<IconData> _fallbackIcons = [
     Icons.face_retouching_natural_outlined,
     Icons.person_outline_rounded,
@@ -753,7 +782,6 @@ class _ProductPageState extends State<ProductPage>
     );
   }
 
-  // Widget gambar dengan fallback ke icon jika asset belum ada
   Widget _buildAssetImage(int index) {
     final String assetPath = commissions[index]["image"] as String;
     return ClipRRect(
@@ -764,7 +792,6 @@ class _ProductPageState extends State<ProductPage>
         height: 70,
         fit: BoxFit.cover,
         errorBuilder: (context, error, stackTrace) {
-          // Fallback: tampilkan box icon jika file belum ada
           return Container(
             width: 70,
             height: 70,
@@ -824,12 +851,8 @@ class _ProductPageState extends State<ProductPage>
         padding: const EdgeInsets.all(14),
         child: Row(
           children: [
-            // Gambar asset dengan fallback icon
             _buildAssetImage(index),
-
             const SizedBox(width: 14),
-
-            // Content
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -890,8 +913,6 @@ class _ProductPageState extends State<ProductPage>
                 ],
               ),
             ),
-
-            // Actions
             Column(
               children: [
                 GestureDetector(
